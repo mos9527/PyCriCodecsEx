@@ -1,3 +1,5 @@
+# TODO: Fix CRILAYLA Compression
+# Decompression is tested in test_CPK.py
 import os
 from . import sample_file_path, temp_file_path
 from CriCodecsEx import CriLaylaCompress, CriLaylaDecompress

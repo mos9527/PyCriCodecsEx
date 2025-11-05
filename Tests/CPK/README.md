@@ -8,3 +8,8 @@ default.cpk
 └───subdir
         niko-512.png
 ```
+### compressed.cpk
+```
+compressed.cpk
+     niko.png
+```
