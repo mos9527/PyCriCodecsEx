@@ -22,6 +22,13 @@ See also:
 #include <stdlib.h>
 #include <string.h>
 
+unsigned fourCC(const char a, const char b, const char c, const char d) {
+	return (a << 0) | (b << 8) | (c << 16) | (d << 24);
+};
+const unsigned CRILAYLA_LO = fourCC('C', 'R', 'I', 'L');
+const unsigned CRILAYLA_HI = fourCC('A', 'Y', 'L', 'A');
+const unsigned long long CRILAYLA_MAGIC =  CRILAYLA_LO | (unsigned long long)CRILAYLA_HI << 32uLL;
+
 struct crilayla_header{
     unsigned long long crilayla;
     unsigned int decompress_size;
@@ -186,7 +193,7 @@ unsigned int layla_comp(unsigned char *dest, int *destLen, unsigned char *src, i
         return 0; // Underflow    
     *destLen = *destLen - m; dest += m;
     // CRIL AYLA srcLen-0x100 destLen
-    int l[] = { 0x4c495243,0x414c5941,srcLen - 0x100,*destLen };
+    int l[] = { (int)CRILAYLA_LO,(int)CRILAYLA_HI,srcLen - 0x100,*destLen };
     for (j = 0; j<4; j++)
     {
         for (i = 0; i<4; i++)
@@ -210,7 +217,7 @@ PyObject* CriLaylaDecompress(PyObject* self, PyObject* d){
 	unsigned char *data = (unsigned char *)PyBytes_AsString(d);
 	crilayla_header header = *(crilayla_header*)data;
     
-    if (header.crilayla != 0x414c59434152494cULL) {
+    if (header.crilayla != CRILAYLA_MAGIC) {
         PyErr_SetString(PyExc_ValueError, "Invalid CRILAYLA header.");
         return NULL;
     }

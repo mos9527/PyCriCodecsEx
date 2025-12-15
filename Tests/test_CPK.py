@@ -2,10 +2,10 @@ import os
 from . import sample_file_path, temp_file_path
 from PyCriCodecsEx.cpk import CPK, CPKBuilder
 
-def test_cpk_unpack():     
+def cpk_unpack(fname):     
     # Extract CPK content
     cpkdir = temp_file_path('cpk')
-    cpk = CPK(sample_file_path('CPK/default.cpk'))
+    cpk = CPK(sample_file_path(fname))
     for f in cpk.files:
         dst = os.path.join(cpkdir, f.path)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
@@ -29,5 +29,12 @@ def test_cpk_unpack():
     cpk.save(temp_file_path('rebuild.cpk'))
     print('Repack done.')
 
+def test_cpk_regular():
+    cpk_unpack('CPK/default.cpk')
+
+def test_cpk_compressed():
+    cpk_unpack('CPK/compressed.cpk')
+
 if __name__ == "__main__":
-    test_cpk_unpack()
+    test_cpk_regular()
+    test_cpk_compressed()
