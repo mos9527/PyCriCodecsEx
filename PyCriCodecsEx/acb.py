@@ -21,7 +21,7 @@ class CueNameTable(UTFViewer):
 
 class CueTable(UTFViewer):
     CueId: int
-    '''Corresponds to the cue index found in CueNameTable'''
+    '''Unqiue ID, indexed by WaveformTable'''
     Length: int
     '''Duration of the cue in milliseconds'''
     ReferenceIndex: int
@@ -52,7 +52,14 @@ class WaveformTable(UTFViewer):
     NumChannels: int
     NumSamples: int
     SamplingRate: int
+    StreamAwbId: int
+    StreamAwbPortNo: int
     Streaming: int
+
+    @property
+    def awb_id(self) -> int:
+        """Returns the AWB ID used by this waveform."""
+        return self.MemoryAwbId if not self.Streaming else self.StreamAwbId
 
 
 class ACBTable(UTFViewer):
@@ -112,7 +119,11 @@ class ACBTable(UTFViewer):
         seq = self.SequenceTable[index]
         for i in range(seq.NumTracks):
             track_index = int.from_bytes(seq.TrackIndex[i*2:i*2+2], 'big')
-            yield self.WaveformTable[track_index]
+            if track_index < len(self.WaveformTable):
+                yield self.WaveformTable[track_index]
+            else:
+                print('FIXME: track index out of range:', track_index)
+                pass
 
     def _waveform_of_synth(self, index: int):        
         item_type, item_index = AcbSynthReferenceStruct.unpack(self.SynthTable[index].ReferenceItems)
@@ -132,8 +143,7 @@ class ACBTable(UTFViewer):
         """Retrieves the waveform(s) associated with a cue.
 
         Cues may reference multiple waveforms, which could also be reused."""
-        cue = next(filter(lambda c: c.CueId == index, self.CueTable), None)
-        assert cue, "cue of index %d not found" % index
+        cue = self.CueTable[index]
         match cue.ReferenceType:
             case 0x01:
                 return [self.WaveformTable[index]]
@@ -218,11 +228,11 @@ class ACB(UTF):
         wavs = []        
         for wav in self.view.WaveformTable:
             encode = AcbEncodeTypes(wav.EncodeType)
-            codec = (CODEC_TABLE.get(encode, None))
+            codec = (CODEC_TABLE.get(encode, None))            
             if codec:
-                wavs.append(codec(awb.get_file_at(wav.MemoryAwbId), **kwargs))
+                wavs.append(codec(awb.get_file_at(wav.awb_id), **kwargs))
             else:
-                wavs.append((encode, wav.NumChannels, wav.NumSamples, wav.SamplingRate, awb.get_file_at(wav.MemoryAwbId)))
+                wavs.append((encode, wav.NumChannels, wav.NumSamples, wav.SamplingRate, awb.get_file_at(wav.awb_id)))
         return wavs
 
     def set_waveforms(self, value: List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int, bytes]]):
@@ -277,8 +287,8 @@ class ACB(UTF):
         To modify cues, use the `view` property instead.
         """
         for name, cue in zip(self.view.CueNameTable, self.view.CueTable):
-            waveforms = self.view.waveform_of(cue.CueId)
-            yield PackedCueItem(cue.CueId, name.CueName, cue.Length / 1000.0, [waveform.MemoryAwbId for waveform in waveforms])
+            waveforms = self.view.waveform_of(name.CueIndex)
+            yield PackedCueItem(name.CueIndex, name.CueName, cue.Length / 1000.0, [waveform.awb_id for waveform in waveforms])
 
 class ACBBuilder:
     """Use this class to build ACB files from an existing ACB object."""
