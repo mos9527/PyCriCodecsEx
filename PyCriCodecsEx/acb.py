@@ -10,7 +10,7 @@ from PyCriCodecsEx.hca import HCACodec
 from PyCriCodecsEx.adx import ADXCodec
 from PyCriCodecsEx.awb import AWB, AWBBuilder
 from dataclasses import dataclass
-from copy import deepcopy
+from pathlib import Path
 
 class CueNameTable(UTFViewer):
     CueIndex: int
@@ -66,6 +66,9 @@ class ACBTable(UTFViewer):
     VersionString: str
 
     AwbFile: bytes
+    '''Where the AWB data is stored.
+    This could be external - in such cases this field is empty and the Name field may be used
+    to locate an external AWB file.'''
     CueNameTable: List[CueNameTable]
     '''A list of cue names with their corresponding indices into CueTable'''
     CueTable: List[CueTable]
@@ -186,7 +189,13 @@ class ACB(UTF):
     @property
     def awb(self) -> AWB:
         """Returns the AWB object associated with the ACB."""
-        return AWB(self.view.AwbFile)
+        if self.view.AwbFile:
+            return AWB(self.view.AwbFile)
+        # Don't have it - very possibly external.
+        awb_path = Path(self.name + '.awb')
+        assert awb_path.exists(), f"External AWB file not found at {awb_path}"
+        return AWB(awb_path.open('rb'))
+        
 
     def get_waveforms(self) -> List[HCACodec | ADXCodec | Tuple[AcbEncodeTypes, int, int, int,  bytes]]:
         """Returns a list of decoded waveforms.
@@ -292,8 +301,5 @@ class ACBBuilder:
         The object may be modified in place before building, which will be reflected in the output binary.
         """
         # Check whether all AWB indices are valid
-        assert all(
-            waveform.MemoryAwbId < self.acb.awb.numfiles for waveform in self.acb.view.WaveformTable
-        ), "one or more AWB indices are out of range"
         binary = UTFBuilder(self.acb.dictarray, encoding=self.acb.encoding, table_name=self.acb.table_name)
         return binary.bytes()

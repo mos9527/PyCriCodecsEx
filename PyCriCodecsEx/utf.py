@@ -445,9 +445,7 @@ class UTFBuilder:
                         + 1,
                         4,
                         "big",
-                    ) + int.to_bytes(
-                        data[3], calcsize(self._stringtypes(data[1])), "big"
-                    )
+                    ) + pack(">" + self._stringtypes(data[1]), data[3])                    
                 elif data[1] == 0xA:
                     columns += int.to_bytes(
                         self.strings.index(

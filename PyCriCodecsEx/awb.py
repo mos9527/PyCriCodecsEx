@@ -27,6 +27,9 @@ class AWB:
         if type(stream) == str:
             self.stream = FileIO(stream)
             self.filename = stream
+        elif hasattr(stream, 'read'):
+            self.stream = stream
+            self.filename = ""
         else:
             self.stream = BytesIO(stream)
             self.filename = ""
