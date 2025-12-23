@@ -320,3 +320,12 @@ class ACBBuilder:
         # Check whether all AWB indices are valid
         binary = UTFBuilder(self.acb.dictarray, encoding=self.acb.encoding, table_name=self.acb.table_name)
         return binary.bytes()
+
+    def save(self, filepath: str) -> None:
+        """Saves the built ACB to a file.
+
+        Args:
+            filepath (str): The path to save the ACB file to.
+        """
+        with open(filepath, "wb") as f:
+            f.write(self.build())

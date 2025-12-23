@@ -166,3 +166,12 @@ class AWBBuilder:
                 fl = fl.ljust(len(fl) + (self.align - (len(fl) % self.align)), b"\x00")
             outfile.write(fl)
         return outfile.getvalue()
+
+    def save(self, filepath: str) -> None:
+        """Saves the built AWB to a file.
+
+        Args:
+            filepath (str): The path to save the AWB file to.
+        """
+        with open(filepath, "wb") as f:
+            f.write(self.build())    

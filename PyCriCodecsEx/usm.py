@@ -21,6 +21,7 @@ class USMCrypt:
     videomask2: bytearray
     audiomask: bytearray
     usm_key: int = 0
+
     def init_key(self, key: str):
         if type(key) == str:
             if len(key) <= 16:
@@ -97,13 +98,14 @@ class USMCrypt:
                 self.audiomask[x] = self.videomask2[x]
 
     # Decrypt SFV chunks or ALP chunks, should only be used if the video data is encrypted.
-    def VideoMask(self, memObj: bytearray) -> bytearray:
+    def VideoMask(self, memObj: bytearray) -> bytearray:        
         head = memObj[:0x40]
-        memObj = memObj[0x40:]
+        memObj = memObj[0x40:]          
         size = len(memObj)
         # memObj len is a cached property, very fast to lookup
         if size <= 0x200:
             return head + memObj
+        assert type(memObj) == bytearray, "memObj must be a bytearray."
         data_view = memoryview(memObj).cast("Q")
 
         # mask 2
@@ -112,24 +114,48 @@ class USMCrypt:
         vmask = self.videomask2
         vmask_view = memoryview(vmask).cast("Q")
 
-        mask_index = 0
-
         for i in range(32, size // 8):
-            data_view[i] ^= mask_view[mask_index]
-            mask_view[mask_index] = data_view[i] ^ vmask_view[mask_index]
-            mask_index = (mask_index + 1) % 4
-
+            data_view[i] ^= mask_view[i % 4]
+            mask_view[i % 4] = data_view[i] ^ vmask_view[i % 4]
+        
         # mask 1
         mask = bytearray(self.videomask1)
         mask_view = memoryview(mask).cast("Q")
-        mask_index = 0
         for i in range(32):
-            mask_view[mask_index] ^= data_view[i + 32]
-            data_view[i] ^= mask_view[mask_index]
-            mask_index = (mask_index + 1) % 4
-
+            mask_view[i % 4] ^= data_view[i + 32]
+            data_view[i] ^= mask_view[i % 4]                  
         return head + memObj
 
+    # Encrypt SFV chunks or ALP chunks, should only be used if the video data needs to be encrypted.
+    def VideoMaskInv(self, memObj: bytearray) -> bytearray:
+        head = memObj[:0x40]
+        memObj = memObj[0x40:]          
+        size = len(memObj)
+        # memObj len is a cached property, very fast to lookup
+        if size <= 0x200:
+            return head + memObj
+        assert type(memObj) == bytearray, "memObj must be a bytearray."
+        data_view = memoryview(memObj).cast("Q")
+
+        # mask 1
+        mask = bytearray(self.videomask1)
+        mask_view = memoryview(mask).cast("Q")  
+        for i in range(32):
+            mask_view[i % 4] ^= data_view[i + 32]
+            data_view[i] ^= mask_view[i % 4]
+
+        # mask 2
+        mask = bytearray(self.videomask2)
+        mask_view = memoryview(mask).cast("Q")
+        vmask = self.videomask2
+        vmask_view = memoryview(vmask).cast("Q")
+
+        for i in range(32, size // 8):
+            temp = data_view[i]
+            data_view[i] ^= mask_view[i % 4]
+            mask_view[i % 4] = temp ^ vmask_view[i % 4]
+        return head + memObj
+    
     # Decrypts SFA chunks, should just be used with ADX files.
     def AudioMask(self, memObj: bytearray) -> bytearray:
         head = memObj[:0x140]
@@ -202,7 +228,7 @@ class FFmpegCodec:
         # Lesson learned. Do NOT trust the metadata.
         # num, denom = self.stream["r_frame_rate"].split("/")
         # return int(int(num) / int(denom))
-        return 1 / min((dt for _, _, _, dt in self.frames()))
+        return 1 / min((dt for _, _, _, dt in self.frames() if dt))
 
     @cached_property
     def avg_framerate(self):
@@ -211,7 +237,7 @@ class FFmpegCodec:
         # if avg_frame_rate:
         #     num, denom = avg_frame_rate.split("/")
         #     return int(int(num) / int(denom))
-        return self.frame_count / sum((dt for _, _, _, dt in self.frames()))
+        return self.frame_count / sum((dt for _, _, _, dt in self.frames() if dt))
 
     @property
     def packets(self):
@@ -232,7 +258,8 @@ class FFmpegCodec:
     def frames(self):
         """Generator of [frame data, frame dict, is keyframe, duration]"""
         offsets = [int(packet["pos"]) for packet in self.packets] + [self.filesize]
-        for i, frame in enumerate(self.packets):
+        offsets[0] = 0 # Includes the metadata packet as well
+        for i, frame in enumerate(self.packets):            
             frame_size = offsets[i + 1] - offsets[i]
             self.file.seek(offsets[i])
             raw_frame = self.file.read(frame_size)
@@ -266,8 +293,9 @@ class FFmpegCodec:
                 0,
                 0,
             )
+            data += b"\x00" * padlen
             if builder.encrypt:
-                data = builder.VideoMask(data)
+                data = builder.VideoMaskInv(bytearray(data))
             SFV_chunk += data
             SFV_chunk = SFV_chunk.ljust(datalen + 0x18 + padlen + 0x8, b"\x00")
             SFV_list.append(SFV_chunk)
@@ -354,7 +382,7 @@ class USM(USMCrypt):
 
         Args:
             filename (str): The path to the USM file.
-            key (str, optional): The decryption key. Either int64 or a hex string. Defaults to None.
+            key (str, optional): The USM decryption key. Either int64 or a hex string. Defaults to None.
         """
         self.filename = filename
         self.decrypt = False
@@ -507,11 +535,11 @@ class USM(USMCrypt):
         stream.filename = sfname
         return stream
 
-    def get_audios(self, hca_key = 0, hca_subkey = 0) -> List[ADXCodec | HCACodec]:
+    def get_audios(self, hca_key = -1, hca_subkey = 0) -> List[ADXCodec | HCACodec]:
         """Create a list of audio codecs from the available streams.
         
         Args:
-            hca_key (int, optional): The HCA decryption key. Either int64 or a hex string. Defaults to 0 - in which
+            hca_key (int, optional): The HCA decryption key. Either int64 or a hex string. Defaults to -1, in which
                                      case the key for USM (if used) would also be used for HCA decryption.
             hca_subkey (int, optional): The HCA decryption subkey. Either int64 or a hex string. Defaults to 0.
         """
@@ -519,7 +547,7 @@ class USM(USMCrypt):
             case ADXCodec.AUDIO_CODEC:
                 return [ADXCodec(s[2], s[1]) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value]
             case HCACodec.AUDIO_CODEC:
-                return [HCACodec(s[2], s[1], key=hca_key or self.usm_key, subkey=hca_subkey) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value] # HCAs are never encrypted in USM
+                return [HCACodec(s[2], s[1], key=hca_key if hca_key != -1 else self.usm_key, subkey=hca_subkey) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value] # HCAs are never encrypted in USM
             case _:
                 return []
 
@@ -530,23 +558,23 @@ class USMBuilder(USMCrypt):
 
     key: int = None
     encrypt: bool = False
-    encrypt_audio: bool = False
 
     def __init__(
         self,
-        key = None,
-        encrypt_audio = False
+        key = None
     ) -> None:
         """Initialize the USMBuilder from set source files.
 
         Args:
-            key (str | int, optional): The encryption key. Either int64 or a hex string. Defaults to None.
-            encrypt_audio (bool, optional): Whether to also encrypt the audio. Defaults to False.
+            key (str | int, optional): The USM encryption key. Either int64 or a hex string. Defaults to None.
+        
+        Note:
+            For USM with key set, HCA audio streams *usually* use the same key for encryption.
+            Thus when adding HCA audio streams, make sure your HCACodec is initialized with a key itself.
         """
         if key:
             self.init_key(key)
             self.encrypt = True
-        self.encrypt_audio = encrypt_audio
         self.audio_streams = []
 
     def add_video(self, video : str | H264Codec | VP9Codec | MPEG1Codec):
@@ -623,6 +651,15 @@ class USMBuilder(USMCrypt):
         chunks = b''.join(chunks)
         self.usm += chunks
         return self.usm
+
+    def save(self, filepath: str) -> None:
+        """Saves the built USM to a file.
+
+        Args:
+            filepath (str): The path to save the USM file to.
+        """
+        with open(filepath, "wb") as f:
+            f.write(self.build())
 
     def _build_header(
         self, SFV_list: list, SFA_chunks: list, SBT_chunks: list  # TODO: Not used
