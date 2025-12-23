@@ -59,7 +59,7 @@ Decoding and Encoded format can be the following:
 
 * |check| VP9 (from ``.ivf`` container)
 
-  * Prepare source file with: ``ffmpeg -i <input_file> -c:v libvpx -an <output_file>.ivf``
+  * Prepare source file with: ``ffmpeg -i <input_file> -c:v libvpx-vp9 -an <output_file>.ivf``
 
 CPK
 ---
