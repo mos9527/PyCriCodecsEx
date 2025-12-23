@@ -20,7 +20,7 @@ class USMCrypt:
     videomask1: bytearray
     videomask2: bytearray
     audiomask: bytearray
-
+    usm_key: int = 0
     def init_key(self, key: str):
         if type(key) == str:
             if len(key) <= 16:
@@ -36,6 +36,7 @@ class USMCrypt:
             raise ValueError(
                 "Invalid key format, must be either a string or an integer."
             )
+        self.usm_key = int.from_bytes(key1, "big") | (int.from_bytes(key2, "big") << 32)
         t = bytearray(0x20)
         t[0x00:0x09] = [
             key1[3],
@@ -506,13 +507,19 @@ class USM(USMCrypt):
         stream.filename = sfname
         return stream
 
-    def get_audios(self) -> List[ADXCodec | HCACodec]:
-        """Create a list of audio codecs from the available streams."""
+    def get_audios(self, hca_key = 0, hca_subkey = 0) -> List[ADXCodec | HCACodec]:
+        """Create a list of audio codecs from the available streams.
+        
+        Args:
+            hca_key (int, optional): The HCA decryption key. Either int64 or a hex string. Defaults to 0 - in which
+                                     case the key for USM (if used) would also be used for HCA decryption.
+            hca_subkey (int, optional): The HCA decryption subkey. Either int64 or a hex string. Defaults to 0.
+        """
         match self.audio_codec:
             case ADXCodec.AUDIO_CODEC:
                 return [ADXCodec(s[2], s[1]) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value]
             case HCACodec.AUDIO_CODEC:
-                return [HCACodec(s[2], s[1]) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value] # HCAs are never encrypted in USM
+                return [HCACodec(s[2], s[1], key=hca_key or self.usm_key, subkey=hca_subkey) for s in self.streams if s[0] == USMChunckHeaderType.SFA.value] # HCAs are never encrypted in USM
             case _:
                 return []
 

@@ -78,6 +78,13 @@
             "request": "launch",
             "module": "Tests.test_CPK",
             "justMyCode": false
-        },   
+        },  
+        {
+            "name": "Temp Issue 4",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "Tests.issue4",
+            "justMyCode": false
+        } 
     ]
 }
