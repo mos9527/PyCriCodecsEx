@@ -571,6 +571,9 @@ class USMBuilder(USMCrypt):
         Note:
             For USM with key set, HCA audio streams *usually* use the same key for encryption.
             Thus when adding HCA audio streams, make sure your HCACodec is initialized with a key itself.
+
+            For ADXCodec, this will be ALWAYS encrypted if the USMBuilder is initialized with a key. No
+            further configuration is needed.
         """
         if key:
             self.init_key(key)

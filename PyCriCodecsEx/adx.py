@@ -116,7 +116,7 @@ class ADXCodec(ADX):
                     0
                     )
             chunk_data = self.sfaStream.read(datalen)
-            if builder.encrypt_audio:
+            if builder.usm_key:
                 SFA_chunk = builder.AudioMask(chunk_data)
             SFA_chunk += chunk_data.ljust(datalen + padding, b"\x00")            
             current_interval += self.CHUNK_INTERVAL
