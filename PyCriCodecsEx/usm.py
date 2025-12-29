@@ -263,7 +263,7 @@ class FFmpegCodec:
             frame_size = offsets[i + 1] - offsets[i]
             self.file.seek(offsets[i])
             raw_frame = self.file.read(frame_size)
-            yield raw_frame, frame, frame["flags"][0] == "K", float(frame["duration_time"])
+            yield raw_frame, frame, frame.get("flags", [None])[0] == "K", float(frame.get("duration_time", 0))
 
     def generate_SFV(self, builder: "USMBuilder"):        
         v_framerate = int(self.framerate)
